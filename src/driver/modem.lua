@@ -158,10 +158,10 @@ function modem:poll()
 
 			if not err then
 				spec_V300_ch3:parse_AT(modem, chunk)
-				spec_V300_ch4:parse_AT(modem, chunk)
+				-- spec_V300_ch4:parse_AT(modem, chunk) -- balance via USSD
 				spec_V300_ch9:parse_AT(modem, chunk)
 
-				if (modem.automation == "stop") then
+				if (modem.automation == "stop" or true) then
 					local event_name = "AT-ANSWER"
 					local payload = {
 						answer = chunk,
@@ -198,7 +198,7 @@ function modem:close()
 end
 
 --[[
-Sometime we need to stop automation. For example,
+Sometimes we need to stop automation. For example,
 when user click "Setting" of the SIM card in the web UI, then
 automation may give him a surprise (switching SIM card while user is editting setting).
 To give user a possibility to complete the settings we must stop any automation
@@ -232,6 +232,7 @@ local metatable = {
         modem.notifier.init(modem, state, stm, timer)
 
         modem.state:make_ubus()
+		modem.state:tsmsms_subscribe_ubus()
 
 		uloop.init()
 		modem:poll()
