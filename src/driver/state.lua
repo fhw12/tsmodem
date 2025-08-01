@@ -338,7 +338,22 @@ local ubus_methods = {
         send_at = {
             function(req, msg)
                 local resp = {}
-    
+
+                print("\n\n\n==============================")
+                print("message from ubus: ")
+                for key, value in pairs(msg) do
+                    print(key, value)
+                end
+                print("==============================")
+
+                -- request balance via SMS instead of USSD AT command
+                if msg["what-to-update"] == "balance" then
+                    if msg["command"] and msg["command"]:find("%*100#") then -- megafon
+                        util.ubus("tsmodem.sms", "send_sms", { ["phone"] = "000100", ["text"] = "B" })
+                        return
+                    end
+                end
+
                 if msg["command"] then
                     if(state.modem:is_connected(state.modem.fds)) then
                         if (msg["what-to-update"] == "balance") then
@@ -463,6 +478,26 @@ local ubus_methods = {
         },
     }
 }
+
+function state:tsmsms_subscribe_ubus()
+    local ok, error = pcall(function ()
+        local sub = {
+            notify = function(msg, name)
+                if name == "NEW-SMS-RECEIVED" then
+                    print("[tsmsms_subscribe_ubus -> NEW-SMS-RECEIVED]", util.serialize_json(msg))
+                    if msg["result"]:find('"000100"') then -- 000100 megafon
+                        local balance_str = string.match(msg["message"], "%d+")
+                        state:update("balance", balance_str, "", "")
+                    end
+                end
+            end
+        }
+        state.conn:subscribe("tsmodem.sms", sub)
+    end)
+    if not ok then
+        uloop.timer(function () state:tsmsms_subscribe_ubus() end, 3000)
+    end
+end
 
 function state:make_ubus()
     state.conn = ubus.connect()
