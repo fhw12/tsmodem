@@ -485,7 +485,7 @@ function state:tsmsms_subscribe_ubus()
             notify = function(msg, name)
                 if name == "NEW-SMS-RECEIVED" then
                     print("[tsmsms_subscribe_ubus -> NEW-SMS-RECEIVED]", util.serialize_json(msg))
-                    if msg["result"]:find('"000100"') then -- 000100 megafon
+                    if msg["sender"] == "000100" then -- 000100 megafon
                         local balance_str = string.match(msg["message"], "%d+")
                         state:update("balance", balance_str, "", "")
                     end
