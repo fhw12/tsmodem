@@ -4,6 +4,7 @@ local uci = require "luci.model.uci".cursor()
 local util = require "luci.util"
 local log = require "tsmodem.util.log"
 local uloop = require "uloop"
+local ubus = require "ubus"
 
 local M = require 'posix.termio'
 local F = require 'posix.fcntl'
@@ -13,7 +14,7 @@ require "tsmodem.driver.util"
 require "tsmodem.util.pdu_encoder"
 local CREG_STATE = require "tsmodem.constants.creg_state"
 local balance_event_keys = require "tsmodem.constants.balance_event_keys"
-
+local lock = require "tsmodem.driver.lock"
 
 local state = {}
 state.conn = nil      -- Link to UBUS
@@ -339,6 +340,12 @@ local ubus_methods = {
             function(req, msg)
                 local resp = {}
 
+                if not lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
+                    resp.status = "tsmodem is busy"
+                    state.conn:reply(req, resp)
+                    return
+                end
+
                 print("\n\n\n==============================")
                 print("message from ubus: ")
                 for key, value in pairs(msg) do
@@ -388,7 +395,17 @@ local ubus_methods = {
                 end
                 resp["value"] = "true"
                 state.conn:reply(req, resp);
-            end, { command = ubus.STRING, ["what-to-update"] = ubus.STRING }
+            end, { command = ubus.STRING, ["what-to-update"] = ubus.STRING, module_name = ubus.STRING }
+        },
+
+        unlock = {
+            function (req, msg)
+                if msg["module_name"] then
+                    local unlock_status = lock.unlock(msg["module_name"])
+                    local resp = { status = unlock_status }
+                    state.conn:reply(req, resp)
+                end
+            end, { module_name = ubus.STRING }
         },
 
         -- [[ Clear all states ]]
