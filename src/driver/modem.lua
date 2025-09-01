@@ -27,6 +27,7 @@ local spec_V300_ch9 = require "tsmodem.spec.v300_ch9"
 
 local def_events = require "tsmodem.constants.def_events"
 
+local lock = require "tsmodem.driver.lock"
 
 --local check_host = require 'tsmodem.parser.hostip'
 
@@ -43,6 +44,7 @@ modem.ws_pipeout_file = "/tmp/wspipeout.fifo"	-- Gwsocket creates it
 modem.ws_pipein_file = "/tmp/wspipein.fifo" -- Gwsocket creates it
 
 
+modem.lock = lock
 modem.automation = "run"						-- "run" or "stop" are only possible
 modem.occupied = ""								-- "run" means gather modem state, sending AT-commands automatically (see timer.lua)
 												-- "stop" means don't gather the one. It is used when user open SIM-setting panel in the web UI
@@ -114,6 +116,7 @@ function modem:check_session_and_set_automation_mode()
 --[[ 	Session is considered as Alive under all these conditions:
 		- Ubus RPC session exists and equals to console.session (got from UI)
 ]]
+	if true then print("check_session_and_set_automation_mode: return") return end -- always exit
 	local check_result = false
 
 	if checkubus(modem.state.conn, "tsmodem.console", "session") then
@@ -121,7 +124,6 @@ function modem:check_session_and_set_automation_mode()
 		if console_session then
 			local console_sess = console_session["ubus_rpc_session"] or nil
 			local modal_sess = console_session["modal"] or nil
-
 
 			local ubus_sess = util.ubus("session", "get", {
 				ubus_rpc_session = console_sess
@@ -136,10 +138,7 @@ function modem:check_session_and_set_automation_mode()
 		end
 	end
 	if_debug("send_at", "check_session_and_set_automation_mode()",  string.upper(modem.automation), string.format("[modem.lua]: Go modem to [%s] automation mode.", string.upper(modem.automation)))
-
-	return
 end
-
 
 
 function modem:is_connected(fd)
@@ -161,11 +160,12 @@ function modem:poll()
 				-- spec_V300_ch4:parse_AT(modem, chunk) -- balance via USSD
 				spec_V300_ch9:parse_AT(modem, chunk)
 
-				if (modem.automation == "stop" or true) then
+				-- if (modem.automation == "stop" or true) then
+				if modem.lock.is_automation() then
 					local event_name = "AT-ANSWER"
 					local payload = {
 						answer = chunk,
-						automation = modem.automation
+						-- automation = modem.automation
 					}
 					modem.notifier:fire(event_name, payload)
 				end
@@ -223,8 +223,10 @@ local metatable = {
 
         modem.defined_events = def_events
 
-        local occupied = ""
-        modem:stop_automation(occupied)
+        -- local occupied = ""
+        -- modem:stop_automation(occupied)
+		local self_lock = modem.lock.is_owner_or_set_if_unlocked("self")
+		print("self_lock: ", self_lock)
 
         modem.state.init(modem, stm, timer, notifier)
         modem.stm.init(modem, state, timer, notifier)
@@ -246,13 +248,13 @@ local metatable = {
 		timer.CNSMOD:set(timer.interval.netmode)
 		timer.PING:set(timer.interval.ping)
 
-		modem:run_automation()
-		timer.set_automation_mode:set(timer.interval.set_automation_mode_time)
+		-- modem:run_automation()
+		self_lock = modem.lock.unlock("self")
+		print("self_lock: ", self_lock)
 
+		-- timer.set_automation_mode:set(timer.interval.set_automation_mode_time)
 
 		uloop.run()
-
-
 		state.conn:close()
 
 		return table
