@@ -87,8 +87,8 @@ timer.set_automation_mode = uloop.timer(t_set_automation_mode)
 
 -- [[ AT+CREG requests interval ]]
 function t_CREG()
-    if timer.modem.automation == "run" then
-    --if timer.modem.automation_mode.normal == true then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         local SWITCHING = (timer.state:get("switching", "value") == "true")
         if not SWITCHING then
             if(timer.modem:is_connected(timer.modem.fds)) then
@@ -103,8 +103,8 @@ timer.CREG = uloop.timer(t_CREG)
 
 -- [[ AT+CPIN? requests interval ]]
 function t_CPIN()
-    if timer.modem.automation == "run" then
---    if timer.modem.automation_mode.normal == true then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         local SWITCHING = (timer.state:get("switching", "value") == "true")
         if not SWITCHING then
             if(timer.modem:is_connected(timer.modem.fds)) then
@@ -119,8 +119,8 @@ timer.CPIN = uloop.timer(t_CPIN)
 
 -- [[ AT+CSQ requests interval ]]
 function t_CSQ()
-    if timer.modem.automation == "run" then
-    --if timer.modem.automation_mode.normal == true then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         local SWITCHING = (timer.state:get("switching", "value") == "true")
         if not SWITCHING then
             if(timer.modem:is_connected(timer.modem.fds)) then
@@ -135,8 +135,8 @@ timer.CSQ = uloop.timer(t_CSQ)
 
 -- [[ AT+COPS: get GSM provider name from the GSM network ]]
 function t_COPS()
-    if timer.modem.automation == "run" then
-    --if timer.modem.automation_mode.normal == true then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         local SWITCHING = (timer.state:get("switching", "value") == "true")
         if not SWITCHING then
             if(timer.modem:is_connected(timer.modem.fds)) then
@@ -159,8 +159,8 @@ function t_PING()
     local host = uci:get("tsmodem", "default", "ping_host") or '8.8.8.8'
     local host_spc_sim = string.format("%s %s", tostring(host), tostring(sim_id))
 
-    --if timer.modem.automation_mode.normal == true then
-    if timer.modem.automation == "run" then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         if(reg =="1") then
             local SWITCHING = (timer.state:get("switching", "value") == "true")
             if not SWITCHING then
@@ -177,7 +177,8 @@ function t_PING()
             timer.PING:set(timer.interval.ping)
         end
     else
-        if_debug("ping", "PING", "SKIP", "ping.sh --host " .. host_spc_sim, "[timer.lua]: t_PING() skipping as 'automation' not equal 'run': " .. tostring(timer.modem.automation))
+        -- if_debug("ping", "PING", "SKIP", "ping.sh --host " .. host_spc_sim, "[timer.lua]: t_PING() skipping as 'automation' not equal 'run': " .. tostring(timer.modem.automation))
+        if_debug("ping", "PING", "SKIP", "ping.sh --host " .. host_spc_sim, "[timer.lua]: t_PING() skipping as timer.modem.lock.is_automation() is not equal 'true'")
         timer.PING:set(timer.interval.ping)
     end
 end
@@ -186,8 +187,8 @@ timer.PING = uloop.timer(t_PING)
 
 --[[ Get 3G/4G mode from the GSM network ]]
 function t_CNSMOD()
-    --if timer.modem.automation_mode.normal == true then
-    if timer.modem.automation == "run" then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         local SWITCHING = (timer.state:get("switching", "value") == "true")
         if not SWITCHING then
             if(timer.modem:is_connected(timer.modem.fds)) then
@@ -208,8 +209,8 @@ timer.CNSMOD = uloop.timer(t_CNSMOD)
 
 --[[ Switch Sim: Unpoll modem ]]
 function t_SWITCH_1()
-    --if timer.modem.automation_mode.normal == true then
-    if timer.modem.automation == "run" then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         if (timer.modem.debug) then print("----------- t_SWITCH_1_START ----------" .. os.date()) end
 
         timer.state:update("switching", "true", "", "")
