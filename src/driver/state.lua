@@ -14,7 +14,7 @@ require "tsmodem.driver.util"
 require "tsmodem.util.pdu_encoder"
 local CREG_STATE = require "tsmodem.constants.creg_state"
 local balance_event_keys = require "tsmodem.constants.balance_event_keys"
-local lock = require "tsmodem.driver.lock"
+
 
 local state = {}
 state.conn = nil      -- Link to UBUS
@@ -340,18 +340,19 @@ local ubus_methods = {
             function(req, msg)
                 local resp = {}
 
-                if not lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
-                    resp.status = "tsmodem is busy"
-                    state.conn:reply(req, resp)
-                    return
-                end
-
                 print("\n\n\n==============================")
                 print("message from ubus: ")
                 for key, value in pairs(msg) do
                     print(key, value)
                 end
                 print("==============================")
+
+                if not state.modem.lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
+                    resp.status = "tsmodem is busy"
+                    print("send_at: ", resp.status)
+                    state.conn:reply(req, resp)
+                    return
+                end
 
                 -- request balance via SMS instead of USSD AT command
                 if msg["what-to-update"] == "balance" then
@@ -401,7 +402,7 @@ local ubus_methods = {
         unlock = {
             function (req, msg)
                 if msg["module_name"] then
-                    local unlock_status = lock.unlock(msg["module_name"])
+                    local unlock_status = state.modem.lock.unlock(msg["module_name"])
                     local resp = { status = unlock_status }
                     state.conn:reply(req, resp)
                 end
@@ -449,6 +450,16 @@ local ubus_methods = {
 
         automation = {
             function(req, msg)
+                -- if msg then
+                --     print("------------------------------ start")
+                --     print("automation ubus method called!")
+                --     print(msg, #msg)
+                --     for key, value in pairs(msg) do
+                --         print(key, value)
+                --     end
+                --     print("------------------------------ end")
+                -- end
+
                 local resp = {}
                 local occupied = ""
                 if_debug("automation", "UBUS", "ASK", msg, "Note: Run or Stop Driver automation")
@@ -461,6 +472,9 @@ local ubus_methods = {
                     resp = { mode = state.modem.automation, ["occupied"] = occupied }
                 else
                     resp = { mode = state.modem.automation, ["occupied"] = occupied }
+                    -- for key, value in pairs(resp) do
+                    --     print("automation response: ", key, value)
+                    -- end
                 end
                 if_debug("automation", "UBUS", "ANSWER", resp, "")
                 state.conn:reply(req, resp);
