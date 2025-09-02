@@ -161,13 +161,16 @@ function modem:poll()
 				spec_V300_ch9:parse_AT(modem, chunk)
 
 				-- if (modem.automation == "stop" or true) then
-				if modem.lock.is_automation() then
+				if modem.lock.is_notify() then
+					-- print("notifier:fire >>>")
 					local event_name = "AT-ANSWER"
 					local payload = {
 						answer = chunk,
 						-- automation = modem.automation
 					}
 					modem.notifier:fire(event_name, payload)
+					-- print(chunk)
+					-- print("notifier:fire <<<")
 				end
 
 			else
@@ -204,10 +207,12 @@ automation may give him a surprise (switching SIM card while user is editting se
 To give user a possibility to complete the settings we must stop any automation
 ]]
 function modem:run_automation()
+	-- print("run automation")
 	modem.automation = "run"
 end
 
 function modem:stop_automation(occupied)
+	-- print("stop automation")
 	modem.automation = "stop"
 	modem.occupied = occupied
 end
