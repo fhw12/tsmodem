@@ -27,6 +27,7 @@ function lock.is_owner_or_set_if_unlocked(module_name)
     if lock.owner == "" then
         lock.owner = module_name
         lock.last_request_time = os.time()
+        print("> ", "locked")
         return true
     end
 
@@ -41,6 +42,10 @@ end
 function lock.is_automation()
     lock.unlock_if_timeout()
     return lock.owner == ""
+end
+
+function lock.is_notify()
+    return lock.owner ~= ""
 end
 
 return lock
