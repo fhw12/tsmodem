@@ -347,9 +347,11 @@ local ubus_methods = {
                 end
                 print("==============================")
 
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
                 if not state.modem.lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
-                    resp.status = "tsmodem is busy"
-                    print("send_at: ", resp.status)
+                    resp.status = "busy"
+                    resp.msg = "tsmodem is busy"
+                    print("send_at: ", resp.status, resp.msg)
                     state.conn:reply(req, resp)
                     return
                 end
@@ -403,6 +405,7 @@ local ubus_methods = {
             function (req, msg)
                 if msg["module_name"] then
                     local unlock_status = state.modem.lock.unlock(msg["module_name"])
+                    print("> ", unlock_status)
                     local resp = { status = unlock_status }
                     state.conn:reply(req, resp)
                 end
