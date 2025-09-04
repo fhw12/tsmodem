@@ -7,11 +7,11 @@ function lock.unlock(module_name, is_timeout)
     if lock.owner == module_name or is_timeout then
         lock.owner = ""
         lock.last_request_time = 0
-        return "unlocked"
+        return true, "unlocked"
     elseif lock.owner == "" then
-        return "already was unlocked"
+        return true, "already was unlocked"
     else
-        return "not the owner"
+        return false, "not the owner"
     end
 end
 
