@@ -254,7 +254,8 @@ local metatable = {
 		timer.PING:set(timer.interval.ping)
 
 		-- modem:run_automation()
-		self_lock = modem.lock.unlock("self")
+		local unlock_status
+		unlock_status, self_lock = modem.lock.unlock("self")
 		print("self_lock: ", self_lock)
 
 		-- timer.set_automation_mode:set(timer.interval.set_automation_mode_time)
