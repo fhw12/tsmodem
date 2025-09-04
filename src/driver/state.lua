@@ -401,15 +401,36 @@ local ubus_methods = {
             end, { command = ubus.STRING, ["what-to-update"] = ubus.STRING, module_name = ubus.STRING }
         },
 
+        lock = {
+            function (req, msg)
+                local resp = {}
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
+                if state.modem.lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
+                    resp.is_owner = true
+                else
+                    resp.is_owner = false
+                end
+                state.conn:reply(req, resp)
+            end, { module_name = ubus.STRING }
+        },
+
         unlock = {
             function (req, msg)
-                if msg["module_name"] then
-                    local unlock_status = state.modem.lock.unlock(msg["module_name"])
-                    print("> ", unlock_status)
-                    local resp = { status = unlock_status }
-                    state.conn:reply(req, resp)
-                end
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
+                local unlock_status, unlock_msg = state.modem.lock.unlock(msg["module_name"])
+                print("> ", unlock_status, unlock_msg)
+                local resp = { unlock_status = unlock_status, msg = unlock_msg }
+                state.conn:reply(req, resp)
             end, { module_name = ubus.STRING }
+        },
+
+        lock_status = {
+            function (req, msg)
+                local resp = {}
+                resp.owner = state.modem.lock.owner
+                resp.last_request_time = state.modem.lock.last_request_time
+                state.conn:reply(req, resp)
+            end, {}
         },
 
         -- [[ Clear all states ]]
