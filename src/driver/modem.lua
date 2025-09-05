@@ -42,15 +42,8 @@ modem.ws_fds = nil								-- Websocket file descriptor
 modem.ws_fds_ev = nil
 modem.ws_pipeout_file = "/tmp/wspipeout.fifo"	-- Gwsocket creates it
 modem.ws_pipein_file = "/tmp/wspipein.fifo" -- Gwsocket creates it
-
-
-modem.lock = lock
-modem.automation = "run"						-- "run" or "stop" are only possible
-modem.occupied = ""								-- "run" means gather modem state, sending AT-commands automatically (see timer.lua)
-												-- "stop" means don't gather the one. It is used when user open SIM-setting panel in the web UI
-												-- Also, "stop" is used when user needs to send AT manualy via web-console, or via "send_at" ubus method
-												-- Occupied shows what module stoped the automation ("tsmconsole", etc.)
 modem.defined_events = {}
+modem.lock = lock
 
 -- [[ UCI staff ]]
 modem.config = "tsmodem"
@@ -106,48 +99,12 @@ function modem:init()
 	end
 end
 
-
---[[
-	Modem driver checks if http session is active.
-	If the http session is expired or user logged off from UI,
-	then Modem driver go back to 'run' mode automatically.
-]]
-function modem:check_session_and_set_automation_mode()
---[[ 	Session is considered as Alive under all these conditions:
-		- Ubus RPC session exists and equals to console.session (got from UI)
-]]
-	if true then print("check_session_and_set_automation_mode: return") return end -- always exit
-	local check_result = false
-
-	if checkubus(modem.state.conn, "tsmodem.console", "session") then
-		local console_session = util.ubus("tsmodem.console", "session", {})
-		if console_session then
-			local console_sess = console_session["ubus_rpc_session"] or nil
-			local modal_sess = console_session["modal"] or nil
-
-			local ubus_sess = util.ubus("session", "get", {
-				ubus_rpc_session = console_sess
-			})
-			if (ubus_sess and modal_sess == "opened") then
-				modem.automation = "stop"
-				modem.occupied = "tsmconsole"
-			else
-				modem.automation = "run"
-				modem.occupied = ""
-			end
-		end
-	end
-	if_debug("send_at", "check_session_and_set_automation_mode()",  string.upper(modem.automation), string.format("[modem.lua]: Go modem to [%s] automation mode.", string.upper(modem.automation)))
-end
-
-
 function modem:is_connected(fd)
 	return fd and U.isatty(fd)
 end
 
 function modem:poll()
 	if (modem.fds_ev == nil) and modem:is_connected(modem.fds) then
-
 		modem.fds_ev = uloop.fd_add(modem.fds, function(ufd, events)
 
 			local message_from_browser, message_to_browser = "", ""
@@ -160,29 +117,20 @@ function modem:poll()
 				-- spec_V300_ch4:parse_AT(modem, chunk) -- balance via USSD
 				spec_V300_ch9:parse_AT(modem, chunk)
 
-				-- if (modem.automation == "stop" or true) then
 				if modem.lock.is_notify() then
-					-- print("notifier:fire >>>")
 					local event_name = "AT-ANSWER"
 					local payload = {
 						answer = chunk,
-						-- automation = modem.automation
 					}
 					modem.notifier:fire(event_name, payload)
-					-- print(chunk)
-					-- print("notifier:fire <<<")
 				end
-
 			else
 				if (modem.debug and (util.contains(AT_RELATED_UBUS_METHODS, modem.debug_type) or modem.debug_type == "all")) then
 					if_debug(modem.debug_type, "FILE", "POLL", "ERROR", "[modem.lua]: " .. string.format("tsmodem: U.read(modem.fds, 1024) ERROR CODE: %s", tostring(errcode)))
 				end
 			end
-
 		end, uloop.ULOOP_READ)
-
 	end
-
 end
 
 function modem:unpoll()
@@ -200,24 +148,6 @@ function modem:close()
 	if (modem.debug) then print("MODEM FD CLOSED") end
 end
 
---[[
-Sometimes we need to stop automation. For example,
-when user click "Setting" of the SIM card in the web UI, then
-automation may give him a surprise (switching SIM card while user is editting setting).
-To give user a possibility to complete the settings we must stop any automation
-]]
-function modem:run_automation()
-	-- print("run automation")
-	modem.automation = "run"
-end
-
-function modem:stop_automation(occupied)
-	-- print("stop automation")
-	modem.automation = "stop"
-	modem.occupied = occupied
-end
-
-
 -- [[ Initialize ]]
 local metatable = {
 	__call = function(modem, state, stm, timer, notifier)
@@ -228,8 +158,6 @@ local metatable = {
 
         modem.defined_events = def_events
 
-        -- local occupied = ""
-        -- modem:stop_automation(occupied)
 		local self_lock = modem.lock.is_owner_or_set_if_unlocked("self")
 		print("self_lock: ", self_lock)
 
@@ -253,12 +181,9 @@ local metatable = {
 		timer.CNSMOD:set(timer.interval.netmode)
 		timer.PING:set(timer.interval.ping)
 
-		-- modem:run_automation()
 		local unlock_status
 		unlock_status, self_lock = modem.lock.unlock("self")
 		print("self_lock: ", self_lock)
-
-		-- timer.set_automation_mode:set(timer.interval.set_automation_mode_time)
 
 		uloop.run()
 		state.conn:close()

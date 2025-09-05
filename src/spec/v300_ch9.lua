@@ -80,11 +80,13 @@ function v300_ch9:parse_AT(modem, chunk)
 		local event_name = ""
 		local event_payload = {}
 
+		local automation_mode = ""
+		if v300_ch9.modem.lock.is_automation() then automation_mode = "run" else automation_mode = "stop" end
 		if is_sms_sent_ok then
 			event_name = v300_ch9.modem.defined_events[2]
 			event_payload = {
 				answer = cmgs_ok:match(removed_ctrlZ_chunk),
-				automation = v300_ch9.modem.automation
+				automation = automation_mode
 			}
 			v300_ch9.modem.notifier:fire(event_name, event_payload)
 			if_debug("send_at", "NOTIFY", event_name, cmgs_ok:match(removed_ctrlZ_chunk), string.format("[spec/v300_ch9.lua]: %s event", event_name))
@@ -92,7 +94,7 @@ function v300_ch9:parse_AT(modem, chunk)
 			event_name = v300_ch9.modem.defined_events[3]
 			event_payload = {
 				answer = cmgs_error:match(removed_ctrlZ_chunk),
-				automation = v300_ch9.modem.automation
+				automation = automation_mode
 			}
 			v300_ch9.modem.notifier:fire(event_name, event_payload)
 			if_debug("send_at", "NOTIFY", event_name, cmgs_error:match(removed_ctrlZ_chunk), string.format("[spec/v300_ch9.lua]: %s event", event_name))
@@ -100,7 +102,7 @@ function v300_ch9:parse_AT(modem, chunk)
 			event_name = v300_ch9.modem.defined_events[1]
 			event_payload = {
 				answer = removed_ctrlZ_chunk,
-				automation = v300_ch9.modem.automation
+				automation = automation_mode
 			}
 			if_debug("send_at", "NOTIFY", event_name, removed_ctrlZ_chunk, string.format("[spec/v300_ch9.lua]: %s event", event_name))
 		end

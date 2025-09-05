@@ -385,12 +385,6 @@ local ubus_methods = {
                             resp["at_answer"] = "tsmodem [state.lua]: Error of sending AT to modem."
                         else
                             resp["at_answer"] = "UBUS will notify subscribers of tsmodem.driver object with the AT answer."
-                            -- if (state.modem.automation == "stop") then
-                            --     state.last_at_command = msg["command"]
-                            --     resp["at_answer"] = "UBUS will notify subscribers of tsmodem.driver object with the AT answer."
-                            -- else
-                            --     resp["note"] = "UBUS will NOT notify subscribers with AT answer as tsmodem.driver automation is [" .. tostring(state.modem.automation) .. "]"
-                            -- end
                         end
                     end
                 else
@@ -472,34 +466,22 @@ local ubus_methods = {
             end, {}
         },
 
+        -- delete later
         automation = {
             function(req, msg)
-                -- if msg then
-                --     print("------------------------------ start")
-                --     print("automation ubus method called!")
-                --     print(msg, #msg)
-                --     for key, value in pairs(msg) do
-                --         print(key, value)
-                --     end
-                --     print("------------------------------ end")
-                -- end
-
-                local resp = {}
-                local occupied = ""
-                if_debug("automation", "UBUS", "ASK", msg, "Note: Run or Stop Driver automation")
-                if msg and msg["mode"] and msg["mode"] == "run" then
-                    state.modem:run_automation()
-                    resp = { mode = state.modem.automation, ["occupied"] = occupied }
-                elseif msg and msg["mode"] and msg["mode"] == "stop" then
-                    occupied = msg["occupied"]
-                    state.modem.stop_automation(occupied)
-                    resp = { mode = state.modem.automation, ["occupied"] = occupied }
-                else
-                    resp = { mode = state.modem.automation, ["occupied"] = occupied }
-                    -- for key, value in pairs(resp) do
-                    --     print("automation response: ", key, value)
-                    -- end
+                print("automation ubus method called!")
+                if msg then
+                    print("------------------------------ msg start")
+                    print(msg, #msg)
+                    for key, value in pairs(msg) do
+                        print(key, value)
+                    end
+                    print("------------------------------ msg end")
                 end
+
+                local mode = ""
+                if state.modem.lock.is_automation() then mode = "run" else mode = "stop" end
+                local resp = { mode = mode, ["occupied"] = state.modem.lock.owner }
                 if_debug("automation", "UBUS", "ANSWER", resp, "")
                 state.conn:reply(req, resp);
             end, { mode = ubus.STRING, occupied = ubus.STRING }
@@ -527,7 +509,6 @@ local ubus_methods = {
                 else
                     resp["note"] = "Example: [command] = 'SMS text', [value] = '+79998881234'"
                 end
-                --state.modem:run_automation()
                 state.conn:reply(req, resp);
             end, { command = ubus.STRING, value = ubus.STRING }
         },
