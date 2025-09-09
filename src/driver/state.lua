@@ -270,6 +270,14 @@ local ubus_methods = {
                     comment = ""
                 }
 
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
+                if not state.modem.lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
+                    resp.status = "busy"
+                    resp.msg = "tsmodem is busy"
+                    state.conn:reply(req, resp)
+                    return
+                end
+
                 if (state.modem.debug) then
                     print("-----------------------------------------------")
                     print(string.format('|  DO_SWITCH form [%s]', tostring(msg["rule"])))
@@ -289,8 +297,12 @@ local ubus_methods = {
                     state.timer.SWITCH_1:set(state.timer.switch_delay["1_MDM_UNPOLL"])
                     resp.value = "true"
                 end
-                state.conn:reply(req, resp);
 
+                if not (msg["keep_lock"] and msg["keep_lock"] == true) then
+                    state.modem.lock.unlock(msg["module_name"])
+                end
+
+                state.conn:reply(req, resp)
             end, { rule = ubus.STRING }
         },
 
