@@ -11,7 +11,8 @@ local U = require 'posix.unistd'
 
 local cmgs_ok = require 'tsmodem.parser.cmgs_ok'
 local cmgs_error = require 'tsmodem.parser.cmgs_error'
-local remote_control_pars = require'tsmodem.parser.parser_sms'
+local remote_control_pars = require 'tsmodem.parser.parser_sms'
+local pdu_decoder = require 'tsmodem.util.pdu_decoder'
 
 require "tsmodem.driver.util"
 
@@ -32,25 +33,39 @@ function v300_ch9:parse_AT(modem, chunk)
 
 	-- Обработать ответ и выделить тело смс.
 	elseif chunk:find("+CMGR:") then
-		local sms_phone_number = remote_control_pars:get_phone_number(chunk)
-		local sms_command = remote_control_pars:get_sms_text(chunk)
+		local pdu_data = ""
+        local shift = 2
+
+        if chunk:find("OK") then
+            shift = 8
+        end
+
+		print("[v300_ch9] chunk", chunk)
+        for i = #chunk - shift, 1, -1 do
+            if chunk:sub(i, i) == '\n' then break end
+            pdu_data = chunk:sub(i, i) .. pdu_data
+        end
+		print("[v300_ch9] pdu_data", pdu_data)
+
+		local parsed_sms = pdu_decoder.parse(pdu_data)
+
 		-- Запись принятых данных в state: [param, value, command, comment]
-		v300_ch9.modem.state:update("remote_control", tostring(sms_phone_number), tostring(sms_command), "+CMGR:".. tostring(self.resive_sms_counter))
-		if_debug("remote_control", "AT", "ANSWER", sms_phone_number, "[spec/v300_ch9.lua]: +CMGR Sender Phone Number")
-		if_debug("remote_control", "AT", "ANSWER", sms_command, "[spec/v300_ch9.lua]: +CMGR Resive Command")
+		v300_ch9.modem.state:update("remote_control", tostring(parsed_sms.sender_number), tostring(parsed_sms.message_text), "+CMGR:".. tostring(self.resive_sms_counter))
+		if_debug("remote_control", "AT", "ANSWER", parsed_sms.sender_number, "[spec/v300_ch9.lua]: +CMGR Sender Phone Number")
+		if_debug("remote_control", "AT", "ANSWER", parsed_sms.message_text, "[spec/v300_ch9.lua]: +CMGR Resive Command")
 
 		local event_name = v300_ch9.modem.defined_events[4]
 		local event_payload = {
 			answer = chunk,
-			["sms_phone"] = sms_phone_number,
-			["sms_command"] = sms_command
+			["sms_phone"] = parsed_sms.sender_number,
+			["sms_command"] = parsed_sms.message_text,
 		}
 		v300_ch9.modem.notifier:fire(event_name, event_payload)
 
-
 		-- Удалить все СМС если их колличество больше 10
-		if (self.resive_sms_counter > 6) then
-			-- Отправить команду в модем на удаление смс 
+		print('[v300_ch9] self.resive_sms_counter', self.resive_sms_counter)
+		if self.resive_sms_counter and type(self.resive_sms_counter) == "number" and self.resive_sms_counter > 10 then
+			-- Отправить команду в модем на удаление смс
 			U.write(v300_ch9.modem.fds, "AT+CMGD=,1" .. "\r\n")
 			if_debug("remote_control", "AT", "ANSWER", self.resive_sms_counter, "[spec/v300_ch9.lua]: SMS storage limited. Deleteting all read messages.")
 		end
@@ -65,11 +80,13 @@ function v300_ch9:parse_AT(modem, chunk)
 		local event_name = ""
 		local event_payload = {}
 
+		local automation_mode = ""
+		if v300_ch9.modem.lock.is_automation() then automation_mode = "run" else automation_mode = "stop" end
 		if is_sms_sent_ok then
 			event_name = v300_ch9.modem.defined_events[2]
 			event_payload = {
 				answer = cmgs_ok:match(removed_ctrlZ_chunk),
-				automation = v300_ch9.modem.automation
+				automation = automation_mode
 			}
 			v300_ch9.modem.notifier:fire(event_name, event_payload)
 			if_debug("send_at", "NOTIFY", event_name, cmgs_ok:match(removed_ctrlZ_chunk), string.format("[spec/v300_ch9.lua]: %s event", event_name))
@@ -77,7 +94,7 @@ function v300_ch9:parse_AT(modem, chunk)
 			event_name = v300_ch9.modem.defined_events[3]
 			event_payload = {
 				answer = cmgs_error:match(removed_ctrlZ_chunk),
-				automation = v300_ch9.modem.automation
+				automation = automation_mode
 			}
 			v300_ch9.modem.notifier:fire(event_name, event_payload)
 			if_debug("send_at", "NOTIFY", event_name, cmgs_error:match(removed_ctrlZ_chunk), string.format("[spec/v300_ch9.lua]: %s event", event_name))
@@ -85,7 +102,7 @@ function v300_ch9:parse_AT(modem, chunk)
 			event_name = v300_ch9.modem.defined_events[1]
 			event_payload = {
 				answer = removed_ctrlZ_chunk,
-				automation = v300_ch9.modem.automation
+				automation = automation_mode
 			}
 			if_debug("send_at", "NOTIFY", event_name, removed_ctrlZ_chunk, string.format("[spec/v300_ch9.lua]: %s event", event_name))
 		end
@@ -98,6 +115,8 @@ end
 function v300_ch9:AtCommandReadSMS()
 	return function()
 		-- Запрос в модем на считывание принятой смс
+		local at_set_PDU_mode = "\r\nAT+CMGF=0\r\n"
+		U.write(v300_ch9.modem.fds, at_set_PDU_mode)
 		local at_get_sms_counter = "\r\nAT+CMGR=" .. tostring(v300_ch9.resive_sms_counter) .. "\r\n"
 		U.write(v300_ch9.modem.fds, at_get_sms_counter)
 		if_debug("remote_control", "AT", "ANSWER", at_get_sms_counter, "[modem.lua]: Send AT to read SMS")

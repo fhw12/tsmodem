@@ -4,6 +4,7 @@ local uci = require "luci.model.uci".cursor()
 local util = require "luci.util"
 local log = require "tsmodem.util.log"
 local uloop = require "uloop"
+local ubus = require "ubus"
 
 local M = require 'posix.termio'
 local F = require 'posix.fcntl'
@@ -120,14 +121,6 @@ state.ping[1] = {
 
 state.switching = {}
 state.switching[1] = {
-    command = "",
-    value = "",          -- true or false
-    time = "",
-    unread = ""
-}
-
-state.resetting = {}
-state.resetting[1] = {
     command = "",
     value = "",          -- true or false
     time = "",
@@ -277,55 +270,40 @@ local ubus_methods = {
                     comment = ""
                 }
 
-                state:update("balance", CREG_STATE["SWITCHING"], "", "")
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
+                if not state.modem.lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
+                    resp.status = "busy"
+                    resp.msg = "tsmodem is busy"
+                    state.conn:reply(req, resp)
+                    return
+                end
 
-                local switch_already_started = state:get("switching", "value")
-                local resetting_started = state:get("resetting", "value")
+                if (state.modem.debug) then
+                    print("-----------------------------------------------")
+                    print(string.format('|  DO_SWITCH form [%s]', tostring(msg["rule"])))
+                    print("-----------------------------------------------")
+                end
 
-                if (switch_already_started == "true" or resetting_started == "true") then
+                local _,_, switch_already_started = state:get("switching", "value")
+                if (switch_already_started == "true") then
                     resp.value = "false"
                 else
-                    if (state.modem.debug) then
-                        print("-----------------------------------------------")
-                        print(string.format('|  DO_SWITCH form [%s]', tostring(msg["rule"])))
-                        print("-----------------------------------------------")
-                    end
+                    local _,_,simid = state:get("sim","value")
+                    local newsimid = (simid == "0") and "2" or "1"
+                    state:update("switching", "true", "Activate SIM-" .. newsimid, msg["rule"])
+                    if_debug("switching", "UBUS", "ASK", msg["rule"], "Note: msg['rule']")
+                    state:update("reg", CREG_STATE["SWITCHING"], "", "")
+
                     state.timer.SWITCH_1:set(state.timer.switch_delay["1_MDM_UNPOLL"])
                     resp.value = "true"
                 end
-                state.conn:reply(req, resp);
 
-            end, {rule = ubus.STRING}
-        },
-
-        do_reset = {
-            function(req, msg)
-                local resp = {
-                    command = "do_reset",
-                    value = "false",
-                    time = "",
-                    unread = "",
-                    comment = ""
-                }
-
-
-                local switch_already_started = state:get("resetting", "value")
-                local resetting_started = state:get("resetting", "value")
-
-                if (switch_already_started == "true" or resetting_started == "true") then
-                    resp.value = "false"
-                else
-                    if (state.modem.debug) then
-                        print("-----------------------------------------------")
-                        print(string.format('|  DO_RESET form [%s]', tostring(msg["rule"])))
-                        print("-----------------------------------------------")
-                    end
-                    state.timer.RESET_1:set(state.timer.reset_delay["1_MDM_UNPOLL"])
-                    resp.value = "true"
+                if not (msg["keep_lock"] and msg["keep_lock"] == true) then
+                    state.modem.lock.unlock(msg["module_name"])
                 end
-                state.conn:reply(req, resp);
 
-            end, {id = ubus.INT32, msg = ubus.STRING }
+                state.conn:reply(req, resp)
+            end, { rule = ubus.STRING }
         },
 
         ping_update = {
@@ -369,23 +347,38 @@ local ubus_methods = {
             end, {}
         },
 
-        resetting = {
-            function(req, msg)
-                local resp = makeResponse("resetting")
-                state.conn:reply(req, resp);
-
-            end, {}
-        },
-
 
         send_at = {
             function(req, msg)
                 local resp = {}
-    
+
+                print("\n\n\n==============================")
+                print("message from ubus: ")
+                for key, value in pairs(msg) do
+                    print(key, value)
+                end
+                print("==============================")
+
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
+                if not state.modem.lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
+                    resp.status = "busy"
+                    resp.msg = "tsmodem is busy"
+                    print("send_at: ", resp.status, resp.msg)
+                    state.conn:reply(req, resp)
+                    return
+                end
+
+                -- request balance via SMS instead of USSD AT command
+                -- if msg["what-to-update"] == "balance" then
+                --     if msg["command"] and msg["command"]:find("%*100#") then -- megafon
+                --         util.ubus("tsmodem.sms", "send_sms", { ["phone"] = "000100", ["text"] = "B" })
+                --         return
+                --     end
+                -- end
+
                 if msg["command"] then
                     if(state.modem:is_connected(state.modem.fds)) then
                         if (msg["what-to-update"] == "balance") then
-                            state:update("balance", "*", msg["command"], "")
                             state.timer.BAL_TIMEOUT:set(state.timer.timeout["balance"]) -- clear balance state after timeout
                             if_debug("send_at", "AT", "ASK", msg, "Note: sends AT command to get balance and clear balance state if no AT-answer during " .. tostring(state.timer.timeout["balance"]/60000) .. " min.")
                         end
@@ -393,7 +386,7 @@ local ubus_methods = {
                         if(string.find(state.last_at_command, "AT%+CMGS") and string.find(state.last_at_command, "AT%+CMGS") > 0) then
                             local chunk, err, errcode = U.write(state.modem.fds, msg["command"] .. "\26")
                             state.last_at_command = ""
-                            if_debug("send_at", "UBUS", "ASK",state.last_at_command, msg["command"] .. "\26", "SMS was sent")
+                            if_debug("send_at", "UBUS", "ASK", msg["command"] .. "\26", "SMS was sent")
                         else
                             local chunk, err, errcode = U.write(state.modem.fds, msg["command"] .. "\r\n")
                             state.last_at_command = msg["command"]
@@ -404,12 +397,6 @@ local ubus_methods = {
                             resp["at_answer"] = "tsmodem [state.lua]: Error of sending AT to modem."
                         else
                             resp["at_answer"] = "UBUS will notify subscribers of tsmodem.driver object with the AT answer."
-                            -- if (state.modem.automation == "stop") then
-                            --     state.last_at_command = msg["command"]
-                            --     resp["at_answer"] = "UBUS will notify subscribers of tsmodem.driver object with the AT answer."
-                            -- else
-                            --     resp["note"] = "UBUS will NOT notify subscribers with AT answer as tsmodem.driver automation is [" .. tostring(state.modem.automation) .. "]"
-                            -- end
                         end
                     end
                 else
@@ -417,7 +404,39 @@ local ubus_methods = {
                 end
                 resp["value"] = "true"
                 state.conn:reply(req, resp);
-            end, {command = ubus.STRING, ["what-to-update"] = ubus.STRING }
+            end, { command = ubus.STRING, ["what-to-update"] = ubus.STRING, module_name = ubus.STRING }
+        },
+
+        lock = {
+            function (req, msg)
+                local resp = {}
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
+                if state.modem.lock.is_owner_or_set_if_unlocked(msg["module_name"]) then
+                    resp.is_owner = true
+                else
+                    resp.is_owner = false
+                end
+                state.conn:reply(req, resp)
+            end, { module_name = ubus.STRING }
+        },
+
+        unlock = {
+            function (req, msg)
+                if not msg["module_name"] then msg["module_name"] = "unknown" end
+                local unlock_status, unlock_msg = state.modem.lock.unlock(msg["module_name"])
+                print("> ", unlock_status, unlock_msg)
+                local resp = { unlock_status = unlock_status, msg = unlock_msg }
+                state.conn:reply(req, resp)
+            end, { module_name = ubus.STRING }
+        },
+
+        lock_status = {
+            function (req, msg)
+                local resp = {}
+                resp.owner = state.modem.lock.owner
+                resp.last_request_time = state.modem.lock.last_request_time
+                state.conn:reply(req, resp)
+            end, {}
         },
 
         -- [[ Clear all states ]]
@@ -429,11 +448,10 @@ local ubus_methods = {
                 local resp = { res = "OK" }
                 state:update("reg", "7", "", "")
                 state:update("signal", "", "", "")
-                -- We souldn't clear balance as its value provided rarely
-                --[[ state:update("balance", "", "", "") ]]
+                -- state:update("balance", "", "", "")
                 state:update("provider_name", "", "", "")
                 state:update("netmode", "", "", "")
-                state:update("cpin", "", "", "")
+                -- state:update("cpin", "", "", "")
                 state:update("ping", "", "", "")
 
                 if_debug("clear_state", "UBUS", "ANSWER", resp, "")
@@ -460,22 +478,22 @@ local ubus_methods = {
             end, {}
         },
 
-
+        -- delete later
         automation = {
             function(req, msg)
-                local resp = {}
-                local occupied = ""
-                if_debug("automation", "UBUS", "ASK", msg, "Note: Run or Stop Driver automation")
-                if msg and msg["mode"] and msg["mode"] == "run" then
-                    state.modem:run_automation()
-                    resp = { mode = state.modem.automation, ["occupied"] = occupied }
-                elseif msg and msg["mode"] and msg["mode"] == "stop" then
-                    occupied = msg["occupied"]
-                    state.modem.stop_automation(occupied)
-                    resp = { mode = state.modem.automation, ["occupied"] = occupied }
-                else
-                    resp = { mode = state.modem.automation, ["occupied"] = occupied }
+                print("automation ubus method called!")
+                if msg then
+                    print("------------------------------ msg start")
+                    print(msg, #msg)
+                    for key, value in pairs(msg) do
+                        print(key, value)
+                    end
+                    print("------------------------------ msg end")
                 end
+
+                local mode = ""
+                if state.modem.lock.is_automation() then mode = "run" else mode = "stop" end
+                local resp = { mode = mode, ["occupied"] = state.modem.lock.owner }
                 if_debug("automation", "UBUS", "ANSWER", resp, "")
                 state.conn:reply(req, resp);
             end, { mode = ubus.STRING, occupied = ubus.STRING }
@@ -503,12 +521,31 @@ local ubus_methods = {
                 else
                     resp["note"] = "Example: [command] = 'SMS text', [value] = '+79998881234'"
                 end
-                --state.modem:run_automation()
                 state.conn:reply(req, resp);
             end, { command = ubus.STRING, value = ubus.STRING }
         },
     }
 }
+
+function state:tsmsms_subscribe_ubus()
+    local ok, error = pcall(function ()
+        local sub = {
+            notify = function(msg, name)
+                if name == "NEW-SMS-RECEIVED" then
+                    print("[tsmsms_subscribe_ubus -> NEW-SMS-RECEIVED]", util.serialize_json(msg))
+                    if msg["sender"] == "000100" then -- 000100 megafon
+                        local balance_str = string.match(msg["message"], "%d+")
+                        state:update("balance", balance_str, "", "")
+                    end
+                end
+            end
+        }
+        state.conn:subscribe("tsmodem.sms", sub)
+    end)
+    if not ok then
+        uloop.timer(function () state:tsmsms_subscribe_ubus() end, 3000)
+    end
+end
 
 function state:make_ubus()
     state.conn = ubus.connect()
@@ -588,7 +625,7 @@ function state:update_queue(param, value, command, comment)
                 table.remove(state[param], 1)
             end
         --[[ Update last time of succesful registration state ]]
-    elseif (param == "reg" and (newval == CREG_STATE["REGISTERED"] or newval == CREG_STATE["SWITCHING"])) then
+        elseif (param == "reg" and (newval == CREG_STATE["REGISTERED"] or newval == CREG_STATE["SWITCHING"])) then
             state["reg"][n].time = tostring(os.time())
         --[[ Update time of last balance ussd request if balance's value is not changed ]]
         elseif (param == "balance") then
@@ -619,6 +656,7 @@ function state:update(param, value, command, comment)
         else
             local _,_,oldval =state:get(param, "value")
             local _,_,oldcomm = state:get(param, "command")
+
             if(oldval ~= newval or oldcomm ~= command) then
                 local item = {
                     ["command"] = command,
@@ -643,7 +681,7 @@ function state:update(param, value, command, comment)
             elseif (param == "ping") and value == "1" then
                 state["ping"][1].time = tostring(os.time())
             --[[ Update time of last successful cpin ]]
-            elseif (param == "cpin") and value == "true" then
+            elseif (param == "cpin") then
                 state["cpin"][1].time = tostring(os.time())
             --[[ Update SMS command received in any case, even if it was the same like previous one ]]
             elseif (param == "remote_control") then

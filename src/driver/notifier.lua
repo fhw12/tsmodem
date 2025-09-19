@@ -22,7 +22,7 @@ end
 
 function notifier:fire(ev_name, ev_payload)
 	notifier.state.conn:notify(notifier.state.ubus_methods["tsmodem.driver"].__ubusobj, ev_name, ev_payload)
-	if_debug(notifier.modem.debug_type, "NOTIFY", ev_name, ev_payload, string.format("[driver/notifier.lua]: Event [%s] occured when modem automation is [%s].", tostring(ev_name), tostring(ev_payload["automation"])))
+	if_debug(notifier.modem.debug_type, "NOTIFY", ev_name, ev_payload, string.format("[driver/notifier.lua]: Event [%s] occured when modem automation is [%s].", tostring(ev_name), tostring(notifier.modem.lock.is_notify())))
 end
 
 return notifier
