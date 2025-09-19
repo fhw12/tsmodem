@@ -40,10 +40,12 @@ function v300_ch9:parse_AT(modem, chunk)
             shift = 8
         end
 
+		print("[v300_ch9] chunk", chunk)
         for i = #chunk - shift, 1, -1 do
             if chunk:sub(i, i) == '\n' then break end
             pdu_data = chunk:sub(i, i) .. pdu_data
         end
+		print("[v300_ch9] pdu_data", pdu_data)
 
 		local parsed_sms = pdu_decoder.parse(pdu_data)
 
@@ -60,15 +62,13 @@ function v300_ch9:parse_AT(modem, chunk)
 		}
 		v300_ch9.modem.notifier:fire(event_name, event_payload)
 
-
-		-- nil ERROR in self.resive_sms_counter, code commented for now --
-		--
 		-- Удалить все СМС если их колличество больше 10
-		-- if (self.resive_sms_counter > 6) then
-		-- 	-- Отправить команду в модем на удаление смс 
-		-- 	U.write(v300_ch9.modem.fds, "AT+CMGD=,1" .. "\r\n")
-		-- 	if_debug("remote_control", "AT", "ANSWER", self.resive_sms_counter, "[spec/v300_ch9.lua]: SMS storage limited. Deleteting all read messages.")
-		-- end
+		print('[v300_ch9] self.resive_sms_counter', self.resive_sms_counter)
+		if self.resive_sms_counter and type(self.resive_sms_counter) == "number" and self.resive_sms_counter > 10 then
+			-- Отправить команду в модем на удаление смс
+			U.write(v300_ch9.modem.fds, "AT+CMGD=,1" .. "\r\n")
+			if_debug("remote_control", "AT", "ANSWER", self.resive_sms_counter, "[spec/v300_ch9.lua]: SMS storage limited. Deleteting all read messages.")
+		end
 
 	elseif (chunk:find("AT%+CMGS=") or chunk:find("%+CMGS: ") or chunk:find("%+CMS ERROR")) then
 		local removed_ctrlZ_chunk = chunk:gsub("%c", " ")

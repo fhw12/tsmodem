@@ -114,7 +114,7 @@ function modem:poll()
 
 			if not err then
 				spec_V300_ch3:parse_AT(modem, chunk)
-				-- spec_V300_ch4:parse_AT(modem, chunk) -- balance via USSD
+				spec_V300_ch4:parse_AT(modem, chunk) -- balance via USSD, sim provider_id check
 				spec_V300_ch9:parse_AT(modem, chunk)
 
 				if modem.lock.is_notify() then

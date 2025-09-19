@@ -369,12 +369,12 @@ local ubus_methods = {
                 end
 
                 -- request balance via SMS instead of USSD AT command
-                if msg["what-to-update"] == "balance" then
-                    if msg["command"] and msg["command"]:find("%*100#") then -- megafon
-                        util.ubus("tsmodem.sms", "send_sms", { ["phone"] = "000100", ["text"] = "B" })
-                        return
-                    end
-                end
+                -- if msg["what-to-update"] == "balance" then
+                --     if msg["command"] and msg["command"]:find("%*100#") then -- megafon
+                --         util.ubus("tsmodem.sms", "send_sms", { ["phone"] = "000100", ["text"] = "B" })
+                --         return
+                --     end
+                -- end
 
                 if msg["command"] then
                     if(state.modem:is_connected(state.modem.fds)) then
