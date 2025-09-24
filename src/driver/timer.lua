@@ -33,7 +33,7 @@ timer.interval = {
     netmode = 5000,     -- 4G/3G mode state (checking interval)
     provider = 6000,    -- GSM provider name (autodetection checking interval)
     ping = 4000,        -- Ping GSM network (checking interval)
-    --whatslot = 3000     -- Get what slot is active. It runs only if active slot was not detected by some reason
+    sim = 3000,         -- Get what slot is active. It runs only if active slot was not detected by some reason
 
     last_balance_request_time = os.time(),  -- Helper. Need to avoid doing USSD requests too often.
     balance_repeated_request_delay = 125,   -- If GSM opeator doen't send back the balance USSD-response
@@ -54,6 +54,15 @@ timer.switch_delay = {
     ["5_STM_SIM_PWR_0"] = 2000,
     ["6_MDM_REPEAT_POLL"] = 2000,-- Start modem polling since STM32 RST 1 send
     ["7_MDM_END_SWITCHING"] = 1000,
+}
+
+--[[ Step-by-step delays of resetting USB-modem ]]
+timer.reset_delay = {
+    ["1_MDM_UNPOLL"] = 100,     -- Stop modem polling since ubus call tsmodem.driver do_switch runs
+    ["2_STM_SIM_EN_0"] = 2000,
+    ["3_STM_SIM_EN_1"] = 2000,
+    ["4_STM_SIM_PWR_0"] = 2000,
+    ["5_MDM_REPEAT_POLL"] = 2000,
 }
 
 timer.init = function(modem, state, stm, notifier)
@@ -342,24 +351,25 @@ end
 timer.SWITCH_7 = uloop.timer(t_SWITCH_7)
 
 -- --[[ Get active slot periodically ]]
--- function t_WHAT_SLOT()
---     --if timer.modem.automation_mode.normal == true then
---     if timer.modem.automation == "run" then
---         local switch_started = state:get("switching", "value")
+function t_WHAT_SLOT()
+    --if timer.modem.automation_mode.normal == true then
+    if timer.modem.automation == "run" then
+        local _,errmsg,switch_started = (timer.state:get("switching", "value") ~= "false")
+        if_debug("sim", "switch_started", "switching", "[timer.lua]: t_WHAT_SLOT() switch_started: " .. tostring(switch_started), "")
 
---         if not switch_started then
---             local resp, n = {}, 0
---             local res, sim_id = timer.stm:command("~0:SIM.SEL=?")
---             if (res == "OK" and tonumber(sim_id)) then
---                 timer.state:update("sim", tostring(sim_id), "~0:SIM.SEL=?")
---                 if_debug("", "STM", "ANSWER", "OK", "[timer.lua]: t_SWITCH_1() slot ID: " .. tostring(sim_id))
---             else
---                 if_debug("", "STM", "ANSWER", "ERROR", "[timer.lua]: t_SWITCH_1() ~0:SIM.SEL=?")
---                 timer.WHAT_SLOT:set(timer.interval.whatslot)
---             end
---         end
---     end
--- end
+        if (not switch_started) then
+            local resp, n = {}, 0
+            local res, sim_id = timer.stm:command("~0:SIM.SEL=?")
+            if (res == "OK" and tonumber(sim_id)) then
+                timer.state:update("sim", tostring(sim_id), "~0:SIM.SEL=?")
+                if_debug("sim", "STM", "ANSWER", "OK", "[timer.lua]: t_SWITCH_1() slot ID: " .. tostring(sim_id))
+            else
+                if_debug("sim", "STM", "ANSWER", "ERROR", "[timer.lua]: t_SWITCH_1() ~0:SIM.SEL=?")
+            end
+        end
+    end
+    timer.WHAT_SLOT:set(timer.interval.sim)
+end
 -- timer.WHAT_SLOT = uloop.timer(t_WHAT_SLOT)
 
 --[[ Balance request timeout ]]
@@ -373,6 +383,95 @@ function t_BAL_TIMEOUT()
     end
 end
 timer.BAL_TIMEOUT = uloop.timer(t_BAL_TIMEOUT)
+
+--[[ RESETTING MODEM TO FIND A SIM-CARD]]
+
+
+--[[ Switch Sim: Unpoll modem ]]
+function t_RESET_1()
+    if timer.modem.automation == "run" then
+        if (timer.modem.debug) then print("----------- t_RESET_1_START ----------" .. os.date()) end
+        timer.state:update("resetting", "true", "", "")
+
+
+        if timer.modem.fds then
+            timer.modem.unpoll()
+            U.close(timer.modem.fds)
+        end
+
+        timer.RESET_2:set(timer.reset_delay["2_STM_SIM_EN_0"])
+    end
+end
+timer.RESET_1 = uloop.timer(t_RESET_1)
+
+--[[ Switch Sim: EN=0 ]]
+function t_RESET_2()
+    if (timer.modem.debug) then print("----------- t_RESET_2 ----------" .. os.date()) end
+
+    local res, val = timer.stm:command("~0:SIM.EN=0")
+    if "OK" == res then
+        timer.state:update("stm32", "OK", "~0:SIM.EN=0", "")
+        if_debug("", "STM", "ANSWER", "OK", "[timer.lua]: t_RESET_2() ~0:SIM.EN=0")
+
+        timer.RESET_3:set(timer.reset_delay["3_STM_SIM_EN_1"])
+    else
+        timer.state:update("stm32", "ERROR", "~0:SIM.EN=0", "")
+        if_debug("", "STM", "ANSWER", "ERROR", "[timer.lua]: t_RESET_2() ~0:SIM.EN=0. BREAK RESETTING")
+    end
+
+end
+timer.RESET_2 = uloop.timer(t_RESET_2)
+
+--[[ Switch Sim: EN=1 ]]
+function t_RESET_3()
+    if (timer.modem.debug) then print("----------- t_RESET_3 ----------" .. os.date()) end
+
+    local res, val = timer.stm:command("~0:SIM.EN=1")
+    if "OK" == res then
+        timer.state:update("stm32", "OK", "~0:SIM.EN=1", "")
+        if_debug("", "STM", "ANSWER", "OK", "[timer.lua]: t_RESET_3() ~0:SIM.EN=1")
+
+        timer.RESET_4:set(timer.reset_delay["4_STM_SIM_PWR_0"])
+    else
+        timer.state:update("stm32", "ERROR", "~0:SIM.EN=0", "")
+        if_debug("", "STM", "ANSWER", "ERROR", "[timer.lua]: t_RESET_3() ~0:SIM.EN=1. BREAK RESETTING")
+    end
+
+end
+timer.RESET_3 = uloop.timer(t_RESET_3)
+
+
+--[[ Switch Sim: PWR=0 ]]
+function t_RESET_4()
+    if (timer.modem.debug) then print("----------- t_RESET_4 ----------" .. os.date()) end
+
+    local res, val = timer.stm:command("~0:SIM.PWR=0")
+    if "OK" == res then
+        timer.state:update("stm32", "OK", "~0:SIM.PWR=0", "")
+        if_debug("", "STM", "ANSWER", "OK", "[timer.lua]: t_RESET_4() ~0:SIM.PWR=0")
+
+        timer.RESET_5:set(timer.reset_delay["5_MDM_REPEAT_POLL"])
+    else
+        timer.state:update("stm32", "ERROR", "~0:SIM.PWR=0", "")
+        if_debug("", "STM", "ANSWER", "ERROR", "[timer.lua]: t_RESET_4() ~0:SIM.PWR=0. BREAK RESETTING")
+    end
+
+end
+timer.RESET_4 = uloop.timer(t_RESET_4)
+
+
+--[[ Switch Sim: delay before repeat modem polling ]]
+function t_RESET_5()
+    if (timer.modem.debug) then print("----------- t_RESET_5 ----------" .. os.date()) end
+    timer.modem:init()
+
+    if_debug("", "FILE", "POLL", "", "[timer.lua]: t_RESET_5() modem:init()")
+
+    timer.state:update("resetting", "false", "", "")
+    if (timer.modem.debug) then print("----------- RESET_5_END ---------- " .. os.date()) end
+
+end
+timer.RESET_5 = uloop.timer(t_RESET_5)
 
 
 return timer
