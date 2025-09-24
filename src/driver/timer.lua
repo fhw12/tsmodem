@@ -370,7 +370,7 @@ function t_WHAT_SLOT()
     end
     timer.WHAT_SLOT:set(timer.interval.sim)
 end
--- timer.WHAT_SLOT = uloop.timer(t_WHAT_SLOT)
+timer.WHAT_SLOT = uloop.timer(t_WHAT_SLOT)
 
 --[[ Balance request timeout ]]
 function t_BAL_TIMEOUT()
