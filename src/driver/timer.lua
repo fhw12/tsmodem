@@ -353,7 +353,8 @@ timer.SWITCH_7 = uloop.timer(t_SWITCH_7)
 -- --[[ Get active slot periodically ]]
 function t_WHAT_SLOT()
     --if timer.modem.automation_mode.normal == true then
-    if timer.modem.automation == "run" then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         local _,errmsg,switch_started = (timer.state:get("switching", "value") ~= "false")
         if_debug("sim", "switch_started", "switching", "[timer.lua]: t_WHAT_SLOT() switch_started: " .. tostring(switch_started), "")
 
@@ -389,7 +390,8 @@ timer.BAL_TIMEOUT = uloop.timer(t_BAL_TIMEOUT)
 
 --[[ Switch Sim: Unpoll modem ]]
 function t_RESET_1()
-    if timer.modem.automation == "run" then
+    -- if timer.modem.automation == "run" then
+    if timer.modem.lock.is_automation() then
         if (timer.modem.debug) then print("----------- t_RESET_1_START ----------" .. os.date()) end
         timer.state:update("resetting", "true", "", "")
 

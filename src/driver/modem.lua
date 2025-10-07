@@ -178,7 +178,7 @@ local metatable = {
 		timer.CPIN:set(timer.interval.cpin)
 		timer.CREG:set(timer.interval.reg)
 		timer.CSQ:set(timer.interval.signal)
-		timer.WHAT_SLOT:set(timer.interval.sim)
+		-- timer.WHAT_SLOT:set(timer.interval.sim)
 		timer.COPS:set(timer.interval.provider)
 		timer.CNSMOD:set(timer.interval.netmode)
 		timer.PING:set(timer.interval.ping)
