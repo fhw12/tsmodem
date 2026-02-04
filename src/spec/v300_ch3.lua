@@ -21,11 +21,10 @@ local v300_ch3 = {}
 function v300_ch3:parse_AT(modem, chunk)
 	if (chunk:find("+CME ERROR") or chunk:find("+CPIN: READY") or chunk:find("+SIMCARD: NOT AVAILABLE")) then
 		local cpin = CPIN_parser:match(chunk)
+		if_debug("cpin", "AT", "ANSWER", cpin, "[spec/v300_ch3.lua]: chunk: " .. chunk:gsub("%c+", " "))
 		local _,_, SWITCHING = modem.state:get("switching", "value")
 		if cpin and (SWITCHING ~= "true") and (cpin == "true" or cpin == "false" or cpin == "failure") then
 			modem.state:update("cpin", cpin, "AT+CPIN?", "")
-			if_debug("cpin", "AT", "ANSWER", cpin, "[spec/v300_ch3.lua]: chunk: " .. chunk:gsub("%c+", " "))
-			--if (cpin == "false" or cpin == "failure") then return end
 			return
 		end
 	elseif chunk:find("+CREG:") then

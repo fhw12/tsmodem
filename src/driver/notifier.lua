@@ -11,13 +11,11 @@ local notifier = {}
 notifier.modem = nil
 notifier.state = nil
 notifier.timer = nil
-notifier.stm = nil
 
-notifier.init = function(modem, state, stm, timer)
+notifier.init = function(modem, state, timer)
     notifier.modem = modem
     notifier.state = state
     notifier.timer = timer
-    notifier.stm = stm
 end
 
 function notifier:fire(ev_name, ev_payload)

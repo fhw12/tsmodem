@@ -53,8 +53,12 @@ modem.section = "sim"
 
 function modem:init()
 	if not self:is_connected(modem.fds) then
+
+		if_debug(modem.debug_type, "INIT 1", "", "", "")
+
 		modem:unpoll()
 		if modem.fds then
+			if_debug(modem.debug_type, "INIT 2", "", "", "")
 			U.close(modem.fds)
 			modem.state:update("usb", "disconnected", modem.device .. " close")
 			modem.state:update("reg", "7", "AT+CREG?")
@@ -92,7 +96,6 @@ function modem:init()
 			modem.state:update("usb", "connected", modem.device .. " open", "")
 			modem.state:update("reg", "7", "AT+CREG?", "")
 			modem.state:update("signal", "", "AT+CSQ", "")
-			modem.state:update("switching","false", "","")
 			modem.state:update("cpin","", "","")
 
 		end
@@ -152,10 +155,9 @@ end
 
 -- [[ Initialize ]]
 local metatable = {
-	__call = function(modem, state, stm, timer, notifier)
+	__call = function(modem, state, timer, notifier)
         modem.state = state
         modem.timer = timer
-        modem.stm = stm
         modem.notifier = notifier
 
         modem.defined_events = def_events
@@ -163,10 +165,9 @@ local metatable = {
 		local self_lock = modem.lock.is_owner_or_set_if_unlocked("self")
 		print("self_lock: ", self_lock)
 
-        modem.state.init(modem, stm, timer, notifier)
-        modem.stm.init(modem, state, timer, notifier)
-        modem.timer.init(modem, state, stm, notifier)
-        modem.notifier.init(modem, state, stm, timer)
+        modem.state.init(modem, timer, notifier)
+        modem.timer.init(modem, state, notifier)
+        modem.notifier.init(modem, state, timer)
 
         modem.state:make_ubus()
 		modem.state:tsmsms_subscribe_ubus()
@@ -178,10 +179,8 @@ local metatable = {
 		timer.CPIN:set(timer.interval.cpin)
 		timer.CREG:set(timer.interval.reg)
 		timer.CSQ:set(timer.interval.signal)
-		-- timer.WHAT_SLOT:set(timer.interval.sim)
 		timer.COPS:set(timer.interval.provider)
 		timer.CNSMOD:set(timer.interval.netmode)
-		timer.PING:set(timer.interval.ping)
 
 		local unlock_status
 		unlock_status, self_lock = modem.lock.unlock("self")
