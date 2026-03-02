@@ -139,4 +139,17 @@ end
 -- 	end
 -- end
 
+function v300_ch9:parse_balance_and_update(modem, sms)
+	if
+		sms["sender"] == "000100" or -- Megafon
+		sms["sender"] == "111" or -- MTC
+		sms["sender"] == "1111" or -- Beline
+		sms["sender"] == "105" or -- Tele2
+		sms["sender"] == "100" -- Yota
+	then
+		local balance_str = string.match(sms["text"], "%d+")
+		modem.state:update("balance", balance_str, "", "")
+	end
+end
+
 return v300_ch9
