@@ -170,7 +170,7 @@ local metatable = {
         modem.notifier.init(modem, state, timer)
 
         modem.state:make_ubus()
-		modem.state:tsmsms_subscribe_ubus()
+		-- modem.state:tsmsms_subscribe_ubus()
 
 		uloop.init()
 		modem:poll()
